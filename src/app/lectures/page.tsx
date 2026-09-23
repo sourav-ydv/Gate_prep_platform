@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import LectureRow from "@/components/lecture-row";
+import LectureList from "@/components/lecture-list";
 
 export default async function LecturesPage() {
   const supabase = await createClient();
@@ -36,18 +36,11 @@ export default async function LecturesPage() {
 
   const subjectIds = (subjects ?? []).map((s) => s.id);
 
-  const { data: topics } = await supabase
-    .from("topics")
-    .select("id, name, order_index, subject_id")
-    .in("subject_id", subjectIds.length ? subjectIds : ["00000000-0000-0000-0000-000000000000"])
-    .order("order_index");
-
-  const topicIds = (topics ?? []).map((t) => t.id);
-
   const { data: lectures } = await supabase
     .from("lectures")
-    .select("id, title, topic_id, source_type")
-    .in("topic_id", topicIds.length ? topicIds : ["00000000-0000-0000-0000-000000000000"]);
+    .select("id, title, subject_id, source_type, created_at")
+    .in("subject_id", subjectIds.length ? subjectIds : ["00000000-0000-0000-0000-000000000000"])
+    .order("created_at");
 
   const lectureIds = (lectures ?? []).map((l) => l.id);
 
@@ -81,67 +74,46 @@ export default async function LecturesPage() {
           </Link>
         </div>
 
-        <div className="space-y-8">
+        <div className="space-y-4">
           {(subjects ?? []).map((subject) => {
-            const subjectTopics = (topics ?? []).filter(
-              (t) => t.subject_id === subject.id
+            const subjectLectures = (lectures ?? []).filter(
+              (l) => l.subject_id === subject.id
             );
-            if (subjectTopics.length === 0) return null;
+            const doneCount = subjectLectures.filter((l) =>
+              completedSet.has(l.id)
+            ).length;
 
             return (
-              <div key={subject.id}>
-                <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
-                  {subject.name}
-                </h2>
-                <div className="space-y-3">
-                  {subjectTopics.map((topic) => {
-                    const topicLectures = (lectures ?? []).filter(
-                      (l) => l.topic_id === topic.id
-                    );
-                    const doneCount = topicLectures.filter((l) =>
-                      completedSet.has(l.id)
-                    ).length;
-
-                    return (
-                      <div
-                        key={topic.id}
-                        className="rounded-xl border border-slate-200 bg-white p-4"
-                      >
-                        <div className="mb-2 flex items-center justify-between">
-                          <h3 className="text-sm font-semibold text-slate-800">
-                            {topic.name}
-                          </h3>
-                          {topicLectures.length > 0 && (
-                            <span className="text-xs text-slate-400">
-                              {doneCount}/{topicLectures.length} watched
-                            </span>
-                          )}
-                        </div>
-
-                        {topicLectures.length === 0 ? (
-                          <Link
-                            href={`/lectures/add?topic=${topic.id}`}
-                            className="text-sm text-slate-400 hover:text-slate-700"
-                          >
-                            No lectures yet — add one
-                          </Link>
-                        ) : (
-                          <ul className="divide-y divide-slate-100">
-                            {topicLectures.map((lecture) => (
-                              <LectureRow
-                                key={lecture.id}
-                                id={lecture.id}
-                                title={lecture.title}
-                                sourceType={lecture.source_type}
-                                completed={completedSet.has(lecture.id)}
-                              />
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    );
-                  })}
+              <div
+                key={subject.id}
+                className="rounded-xl border border-slate-200 bg-white p-4"
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-slate-800">
+                    {subject.name}
+                  </h2>
+                  {subjectLectures.length > 0 && (
+                    <span className="text-xs text-slate-400">
+                      {doneCount}/{subjectLectures.length} watched
+                    </span>
+                  )}
                 </div>
+
+                {subjectLectures.length === 0 ? (
+                  <Link
+                    href={`/lectures/add?subject=${subject.id}`}
+                    className="text-sm text-slate-400 hover:text-slate-700"
+                  >
+                    No lectures yet — add one
+                  </Link>
+                ) : (
+                  <LectureList
+                    lectures={subjectLectures}
+                    completedIds={subjectLectures
+                      .filter((l) => completedSet.has(l.id))
+                      .map((l) => l.id)}
+                  />
+                )}
               </div>
             );
           })}

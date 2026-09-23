@@ -10,11 +10,13 @@ import {
 } from "@/lib/youtube";
 
 export default function AddLectureForm({
-  topics,
-  defaultTopicId,
+  subjects,
+  defaultSubjectId,
+  branch,
 }: {
-  topics: { id: string; label: string }[];
-  defaultTopicId: string;
+  subjects: { id: string; label: string }[];
+  defaultSubjectId: string;
+  branch: string;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -22,7 +24,10 @@ export default function AddLectureForm({
   const [mode, setMode] = useState<"single" | "playlist">("single");
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
-  const [topicId, setTopicId] = useState(defaultTopicId);
+  const [subjectId, setSubjectId] = useState(defaultSubjectId);
+  const [subjectOptions, setSubjectOptions] = useState(subjects);
+  const [addingSubject, setAddingSubject] = useState(false);
+  const [newSubjectName, setNewSubjectName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -30,12 +35,33 @@ export default function AddLectureForm({
   const inputClass =
     "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-500";
 
+  async function handleAddSubject() {
+    if (!newSubjectName.trim()) return;
+
+    const maxOrder = subjectOptions.length;
+    const { data, error: insertError } = await supabase
+      .from("subjects")
+      .insert({ branch, name: newSubjectName.trim(), order_index: maxOrder + 1 })
+      .select("id, name")
+      .single();
+
+    if (insertError) {
+      setError(insertError.message);
+      return;
+    }
+
+    setSubjectOptions([...subjectOptions, { id: data.id, label: data.name }]);
+    setSubjectId(data.id);
+    setNewSubjectName("");
+    setAddingSubject(false);
+  }
+
   async function handleSingleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    if (!topicId) {
-      setError("Pick a topic for this lecture.");
+    if (!subjectId) {
+      setError("Pick a subject for this lecture.");
       return;
     }
 
@@ -60,7 +86,7 @@ export default function AddLectureForm({
     const { data, error: insertError } = await supabase
       .from("lectures")
       .insert({
-        topic_id: topicId,
+        subject_id: subjectId,
         title: title || "Untitled lecture",
         url,
         source_type: sourceType,
@@ -83,8 +109,8 @@ export default function AddLectureForm({
     e.preventDefault();
     setError(null);
 
-    if (!topicId) {
-      setError("Pick a topic for these lectures.");
+    if (!subjectId) {
+      setError("Pick a subject for these lectures.");
       return;
     }
 
@@ -97,59 +123,61 @@ export default function AddLectureForm({
     setLoading(true);
     setStatus("Fetching playlist from YouTube…");
 
-    const res = await fetch("/api/import-playlist", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ playlistId }),
-    });
-    const data = await res.json();
+    try {
+      const res = await fetch("/api/import-playlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playlistId }),
+      });
 
-    if (!res.ok) {
-      setError(data.error ?? "Could not fetch that playlist.");
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(
+          `Server returned an unexpected response (status ${res.status}). Check that src/app/api/import-playlist/route.ts exists.`
+        );
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error ?? "Could not fetch that playlist.");
+      }
+
+      if (!data.videos || data.videos.length === 0) {
+        throw new Error("No videos found in that playlist.");
+      }
+
+      setStatus(`Found ${data.videos.length} videos. Adding them…`);
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        throw new Error("You need to be signed in.");
+      }
+
+      const rows = data.videos.map((v: { videoId: string; title: string }) => ({
+        subject_id: subjectId,
+        title: v.title,
+        url: `https://www.youtube.com/watch?v=${v.videoId}`,
+        source_type: "youtube",
+        added_by: user.id,
+      }));
+
+      const { error: insertError } = await supabase.from("lectures").insert(rows);
+
+      if (insertError) {
+        throw new Error(insertError.message);
+      }
+
+      router.push("/lectures");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
       setLoading(false);
       setStatus(null);
-      return;
     }
-
-    if (!data.videos || data.videos.length === 0) {
-      setError("No videos found in that playlist.");
-      setLoading(false);
-      setStatus(null);
-      return;
-    }
-
-    setStatus(`Found ${data.videos.length} videos. Adding them…`);
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      setError("You need to be signed in.");
-      setLoading(false);
-      setStatus(null);
-      return;
-    }
-
-    const rows = data.videos.map((v: { videoId: string; title: string }) => ({
-      topic_id: topicId,
-      title: v.title,
-      url: `https://www.youtube.com/watch?v=${v.videoId}`,
-      source_type: "youtube",
-      added_by: user.id,
-    }));
-
-    const { error: insertError } = await supabase.from("lectures").insert(rows);
-
-    setLoading(false);
-    setStatus(null);
-
-    if (insertError) {
-      setError(insertError.message);
-      return;
-    }
-
-    router.push("/lectures");
   }
 
   return (
@@ -208,21 +236,54 @@ export default function AddLectureForm({
 
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Topic
+              Subject
             </label>
             <select
               required
-              value={topicId}
-              onChange={(e) => setTopicId(e.target.value)}
+              value={subjectId}
+              onChange={(e) => setSubjectId(e.target.value)}
               className={`${inputClass} bg-white`}
             >
-              <option value="">Select a topic</option>
-              {topics.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
+              <option value="">Select a subject</option>
+              {subjectOptions.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
                 </option>
               ))}
             </select>
+            {addingSubject ? (
+              <div className="mt-2 flex gap-2">
+                <input
+                  autoFocus
+                  value={newSubjectName}
+                  onChange={(e) => setNewSubjectName(e.target.value)}
+                  placeholder="e.g. Software Engineering"
+                  className={inputClass}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddSubject}
+                  className="shrink-0 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAddingSubject(false)}
+                  className="shrink-0 rounded-lg px-2 text-sm text-slate-400 hover:text-slate-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAddingSubject(true)}
+                className="mt-2 text-xs text-slate-500 hover:text-slate-800"
+              >
+                + Add a subject of your own
+              </button>
+            )}
           </div>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
@@ -249,28 +310,61 @@ export default function AddLectureForm({
               className={inputClass}
             />
             <p className="mt-1 text-xs text-slate-400">
-              Every video in the playlist gets added under the topic below,
+              Every video in the playlist gets added under the subject below,
               titled using its actual YouTube title.
             </p>
           </div>
 
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Topic
+              Subject
             </label>
             <select
               required
-              value={topicId}
-              onChange={(e) => setTopicId(e.target.value)}
+              value={subjectId}
+              onChange={(e) => setSubjectId(e.target.value)}
               className={`${inputClass} bg-white`}
             >
-              <option value="">Select a topic</option>
-              {topics.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
+              <option value="">Select a subject</option>
+              {subjectOptions.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
                 </option>
               ))}
             </select>
+            {addingSubject ? (
+              <div className="mt-2 flex gap-2">
+                <input
+                  autoFocus
+                  value={newSubjectName}
+                  onChange={(e) => setNewSubjectName(e.target.value)}
+                  placeholder="e.g. Software Engineering"
+                  className={inputClass}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddSubject}
+                  className="shrink-0 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAddingSubject(false)}
+                  className="shrink-0 rounded-lg px-2 text-sm text-slate-400 hover:text-slate-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAddingSubject(true)}
+                className="mt-2 text-xs text-slate-500 hover:text-slate-800"
+              >
+                + Add a subject of your own
+              </button>
+            )}
           </div>
 
           {status && <p className="text-sm text-slate-500">{status}</p>}

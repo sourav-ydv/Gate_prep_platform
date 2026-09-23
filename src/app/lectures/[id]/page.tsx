@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import YouTubePlayer from "@/components/youtube-player";
 import ManualProgress from "@/components/manual-progress";
 import DeleteLectureButton from "@/components/delete-lecture-button";
+import LectureAiPanel from "@/components/lecture-ai-panel";
 import { extractYouTubeId, toDriveEmbedUrl } from "@/lib/youtube";
 
 export default async function LecturePage({
@@ -52,6 +53,13 @@ export default async function LecturePage({
             lectureId={lecture.id}
             videoId={extractYouTubeId(lecture.url)!}
             initialWatchedSeconds={progress?.watched_seconds ?? 0}
+          />
+        )}
+
+        {lecture.source_type === "youtube" && extractYouTubeId(lecture.url) && (
+          <LectureAiPanel
+            lectureId={lecture.id}
+            videoId={extractYouTubeId(lecture.url)!}
           />
         )}
 

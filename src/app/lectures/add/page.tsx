@@ -5,9 +5,9 @@ import AddLectureForm from "./add-lecture-form";
 export default async function AddLecturePage({
   searchParams,
 }: {
-  searchParams: Promise<{ topic?: string }>;
+  searchParams: Promise<{ subject?: string }>;
 }) {
-  const { topic } = await searchParams;
+  const { subject } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -29,24 +29,7 @@ export default async function AddLecturePage({
     .eq("branch", branch)
     .order("order_index");
 
-  const { data: topics } = await supabase
-    .from("topics")
-    .select("id, name, subject_id")
-    .in(
-      "subject_id",
-      (subjects ?? []).map((s) => s.id).length
-        ? (subjects ?? []).map((s) => s.id)
-        : ["00000000-0000-0000-0000-000000000000"]
-    )
-    .order("order_index");
-
-  const options = (topics ?? []).map((t) => {
-    const subject = (subjects ?? []).find((s) => s.id === t.subject_id);
-    return {
-      id: t.id,
-      label: subject ? `${subject.name} — ${t.name}` : t.name,
-    };
-  });
+  const options = (subjects ?? []).map((s) => ({ id: s.id, label: s.name }));
 
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-10">
@@ -54,7 +37,7 @@ export default async function AddLecturePage({
         <h1 className="mb-6 text-2xl font-semibold text-slate-900">
           Add a lecture
         </h1>
-        <AddLectureForm topics={options} defaultTopicId={topic ?? ""} />
+        <AddLectureForm subjects={options} defaultSubjectId={subject ?? ""} branch={branch} />
       </div>
     </main>
   );
