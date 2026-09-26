@@ -97,6 +97,29 @@ Transcript:
 ${truncated}
 """`;
 
+  const SUMMARY_QUIZ_SCHEMA = {
+    type: "object",
+    properties: {
+      summary: { type: "string" },
+      quiz: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            question: { type: "string" },
+            options: { type: "array", items: { type: "string" } },
+            correctIndex: { type: "integer" },
+            explanation: { type: "string" },
+          },
+          required: ["question", "options", "correctIndex", "explanation"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["summary", "quiz"],
+    additionalProperties: false,
+  };
+
   const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -107,11 +130,28 @@ ${truncated}
       model: "openai/gpt-oss-20b",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.4,
-      max_tokens: 2000,
+      max_tokens: 2500,
+      reasoning_effort: "low",
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "lecture_summary_quiz",
+          strict: true,
+          schema: SUMMARY_QUIZ_SCHEMA,
+        },
+      },
     }),
   });
 
-  const groqData = await groqRes.json();
+  let groqData: any;
+  try {
+    groqData = await groqRes.json();
+  } catch {
+    return NextResponse.json(
+      { error: `Groq returned an unexpected response (status ${groqRes.status}).` },
+      { status: 502 }
+    );
+  }
 
   if (!groqRes.ok) {
     return NextResponse.json(
