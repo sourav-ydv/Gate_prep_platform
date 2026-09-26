@@ -80,7 +80,7 @@ async function callGroqOnce(chunkText: string, apiKey: string) {
       messages: [{ role: "user", content: buildPrompt(chunkText) }],
       temperature: 0.2,
       max_tokens: 1800,
-      reasoning_effort: "low",
+      reasoning_effort: "medium",
       response_format: {
         type: "json_schema",
         json_schema: {
@@ -139,7 +139,12 @@ async function extractFromChunk(chunkText: string, apiKey: string) {
 
     try {
       const parsed = JSON.parse(cleaned);
-      return { questions: parsed.questions ?? [], error: null };
+      const questions = parsed.questions ?? [];
+      if (questions.length === 0) {
+        const snippet = raw.slice(0, 150).replace(/\s+/g, " ");
+        return { questions: [], error: `0 questions found in this part (model said: "${snippet}...")` };
+      }
+      return { questions, error: null };
     } catch {
       const snippet = raw.slice(0, 150).replace(/\s+/g, " ");
       return { questions: [], error: `could not parse AI response (got: "${snippet}...")` };

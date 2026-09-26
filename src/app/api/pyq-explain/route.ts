@@ -39,6 +39,8 @@ export async function POST(request: NextRequest) {
 
   const prompt = `You are explaining a GATE exam question to a student. Give a clear, step-by-step explanation of why the correct answer is right (150 words max). No preamble, just the explanation.
 
+Write in plain conversational English prose only. Do NOT use LaTeX notation (no \\(, \\[, \\text{}, \\Rightarrow, or similar backslash commands), do NOT use markdown formatting (no ** for bold, no # headers), and do NOT use subscript/superscript notation like S_{old}. For math, just write it inline using plain symbols a person would type normally, e.g. "31.4n = 30.8n + 18" or "n = 18 / 0.6 = 30", and describe variables and steps in words.
+
 Question: ${pyq.question}
 ${pyq.options ? `Options: ${(pyq.options as { id: string; text: string }[]).map((o) => `${o.id}) ${o.text}`).join(", ")}` : ""}
 ${answerDescription}`;
@@ -67,7 +69,21 @@ ${answerDescription}`;
     );
   }
 
-  const explanation = groqData.choices?.[0]?.message?.content?.trim() ?? "";
+  let explanation = groqData.choices?.[0]?.message?.content?.trim() ?? "";
+
+  explanation = explanation
+    .replace(/\\\(|\\\)|\\\[|\\\]/g, "")
+    .replace(/\\text\{([^}]*)\}/g, "$1")
+    .replace(/\\Rightarrow/g, "=>")
+    .replace(/\\times/g, "*")
+    .replace(/\\div/g, "/")
+    .replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, "($1)/($2)")
+    .replace(/\\[a-zA-Z]+/g, "")
+    .replace(/\{([^}]*)\}/g, "$1")
+    .replace(/\*\*/g, "")
+    .replace(/_/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 
   await supabase.from("pyqs").update({ explanation }).eq("id", pyqId);
 
